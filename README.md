@@ -1,5 +1,5 @@
-# mandelbrot
-Mandelbrot set on OCaml
+# Mandelbrot set
+Mandelbrot set in OCaml
 
 ```
 $ dune build && dune exec _build/default/bin/main.exe
