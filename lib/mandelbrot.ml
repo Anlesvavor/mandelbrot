@@ -5,7 +5,7 @@ let mandelbrot (c : Complex.t) (i : int) (z : Complex.t) : Complex.t =
   | _ -> Complex.add (Complex.mul z z) c
 ;;
 
-let is_in_mandelbrot (c : Complex.t) : bool =
+let is_in_mandelbrot (limit : int) (c : Complex.t) : bool =
   let mandelbrot' = mandelbrot c in
   let rec is_in_mandelbrot' fitness i c z =
     if fitness = 0
@@ -16,7 +16,7 @@ let is_in_mandelbrot (c : Complex.t) : bool =
       then false
       else is_in_mandelbrot' (pred fitness) (succ i) c z'
   in
-  is_in_mandelbrot' 25 0 c Complex.zero
+  is_in_mandelbrot' limit 0 c Complex.zero
 ;;
 
 let range (lower_bound : float) (upper_bound : float) (step : float) =
@@ -32,11 +32,25 @@ let range (lower_bound : float) (upper_bound : float) (step : float) =
       | Direction.Upwards -> step
       | Direction.Downwards -> -.step
     in
-    (* let current_position' = current_position +. step' in *)
     if current_position > upper_bound
     then acc
     else aux (current_position :: acc) (current_position +. step')
   in
   aux [] lower_bound
   |> List.rev
+;;
+
+let zoom_tuple
+    (z_factor : float)
+    (ab : float * float)
+    (target : float)
+  : (float * float) =
+  let a, b = ab in
+  let width = b -. a in
+  let middle = a +. (width /. 2.0) in
+  let delta = target -. middle in
+  let a', b' = a +. delta, b +. delta in
+  let a'' = a' +. ((middle -. a') *. (1.0 -. z_factor)) in
+  let b'' = middle +. ((b' -. middle) *. z_factor) in
+  (a'', b'')
 ;;

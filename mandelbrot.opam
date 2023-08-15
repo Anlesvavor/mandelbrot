@@ -13,6 +13,7 @@ depends: [
   "ocaml"
   "dune" {>= "3.7"}
   "graphics"
+  "domainslib"
   "odoc" {with-doc}
 ]
 build: [

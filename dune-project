@@ -22,7 +22,8 @@
  (depends
   ocaml
   dune
-  graphics)
+  graphics
+  domainslib)
  (tags
   (topics "to describe" your project)))
 
