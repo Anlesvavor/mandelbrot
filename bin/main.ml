@@ -93,6 +93,11 @@ let loop (params : Params.t) : Params.t =
                  )
                |> Array.of_list
   in Graphics.plots canvas;
+  Graphics.set_color @@ Graphics.rgb 255 0 0;
+  let info_bar = Printf.sprintf "Re: [%f, %f]; Im: [%fi, %fi]"
+      x1 x2 y1 y2
+  in
+  Graphics.draw_string @@ info_bar;
   let e = Graphics.wait_next_event [Button_down] in
   let mouse_coord = if e.button
     then Some (e.mouse_x, e.mouse_y)
