@@ -11,10 +11,11 @@ let is_in_mandelbrot (limit : int) (c : Complex.t) : bool =
     if fitness = 0
     then true (* function "tired" of searching, c must be part of the set *)
     else
+    if Complex.norm z > 2.0
+    then false
+    else
       let z' = mandelbrot' i z in
-      if Complex.norm z > 2.0
-      then false
-      else is_in_mandelbrot' (pred fitness) (succ i) c z'
+      is_in_mandelbrot' (pred fitness) (succ i) c z'
   in
   is_in_mandelbrot' limit 0 c Complex.zero
 ;;

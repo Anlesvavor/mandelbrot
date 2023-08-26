@@ -138,7 +138,7 @@ let initial_params =
   Params.init ~x_domain: (-2.0, 1.0) ~y_domain: (-1.5, 1.0) ~step: 0.005 ~limit:25
 ;;
 
-let main () =
+let main (initial_params : Params.t) =
   let params = ref initial_params in
   while true do
     draw !params;
@@ -150,5 +150,36 @@ let main () =
   done
 ;;
 
-main ()
+let () =
+  let usage_msg = "
+    mandelbrotset
+    -xa float
+    -xb float
+    -ya float
+    -yb float
+    -density float
+   "
+  in
+  let x1, x2 = initial_params.x_domain in
+  let y1, y2 = initial_params.y_domain in
+  let x1 = ref x1 in
+  let x2 = ref x2 in
+  let y1 = ref y1 in
+  let y2 = ref y2 in
+  let density = ref initial_params.step in
+  let speclist =
+    [("-xa", Arg.Set_float x1, "Lower bound of the Real domain")
+    ;("-xb", Arg.Set_float x2, "Upper bound of the Real domain")
+    ;("-ya", Arg.Set_float y1, "Lower bound of the Imaginary domain")
+    ;("-yb", Arg.Set_float y2, "Upper bound of the Imaginary domain")
+    ;("-d", Arg.Set_float density, "Domain in the Imaginary axis")
+    ]
+  in
+  Arg.parse speclist (fun _ -> ()) usage_msg;
+  Params.init
+    ~x_domain: (!x1, !x2)
+    ~y_domain: (!y1, !y2)
+    ~step: !density
+    ~limit: 50
+  |> main
 ;;
