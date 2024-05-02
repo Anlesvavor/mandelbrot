@@ -16,39 +16,6 @@ module Params = struct
 end
 ;;
 
-module BoundingRect = struct
-  type t =
-    { min_x : float
-    ; max_x : float
-    ; min_y : float
-    ; max_y : float
-    }
-
-  let init
-      ?(min_x = Float.max_float)
-      ?(max_x = Float.min_float)
-      ?(min_y = Float.max_float)
-      ?(max_y = Float.min_float)
-      ()
-    : t =
-    { min_x; max_x; min_y; max_y }
-  ;;
-
-  let from_coords (coords : (float * float) list) : t =
-    let rec aux (rect : t) list = match list with
-      | [] -> rect
-      | (x, y) :: xs ->
-        let min_x = if x < rect.min_x then x else rect.min_x in
-        let min_y = if y < rect.min_y then y else rect.min_y in
-        let max_x = if x > rect.max_x then x else rect.max_x in
-        let max_y = if y > rect.max_y then y else rect.max_y in
-        aux (init ~min_x ~max_x ~min_y ~max_y ()) xs
-    in
-    aux (init ()) coords
-  ;;
-end
-;;
-
 let mandelbrot_canvas (params : Params.t) : ((float * float) * bool) list =
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
@@ -60,26 +27,22 @@ let mandelbrot_canvas (params : Params.t) : ((float * float) * bool) list =
   |> List.map (fun (re, im) -> ((re, im), Mandelbrot.is_in_mandelbrot params.limit {re; im}))
 ;;
 
-let draw (params : Params.t) : unit =
-  let step = params.step in
+let draw (resolution : (int * int))
+    (params : Params.t)
+    (mouse_pos : (int * int))
+  : unit =
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
-  let width = int_of_float @@ (x2 -. x1) /. params.step in
-  let height = int_of_float @@ (y2 -. y1) /. params.step in
+  let width, height = resolution in
   let canvas = mandelbrot_canvas params in
-  let b_rect =
-    canvas
-    |> List.filter (fun (_, b) -> b)
-    |> List.map (fun ((re, im), _) -> (re, im))
-    |> BoundingRect.from_coords
-  in
   let points =
     canvas
     |> List.filter_map (fun ((x, y), is_in_set) ->
-        let offset_x = -.b_rect.min_x /. step in
-        let offset_y = -.b_rect.min_y /. step in
-        let x' = int_of_float @@ (x /. step +. offset_x) in
-        let y' = int_of_float @@ (y /. step +. offset_y) in
+        let ratio v min_v max_v = (v -. min_v) /. (max_v -. min_v) in
+        let offset_x = ratio x x1 x2  in
+        let offset_y = ratio y y1 y2  in
+        let x' = int_of_float @@ (offset_x *. float_of_int width) in
+        let y' = int_of_float @@ (offset_y *. float_of_int height) in
         if is_in_set
         then Some (x', y')
         else None
@@ -94,8 +57,18 @@ let draw (params : Params.t) : unit =
   Graphics.set_window_title @@ Printf.sprintf "Mandelbrot set: %s" resolution;
   Graphics.set_color @@ Graphics.rgb 0 0 0;
   Graphics.plots points;
-  Graphics.set_color @@ Graphics.rgb 255 0 0;
+  Graphics.set_color @@ Graphics.rgb 0 0 255;
+  Graphics.fill_rect 0 0 500 15;
+  Graphics.set_color @@ Graphics.rgb 255 128 128;
   Graphics.draw_string @@ info_bar;
+  let mx, my = mouse_pos in
+  Graphics.set_color @@ Graphics.rgb 0 255 0;
+  Graphics.fill_circle mx my 2;
+  Graphics.draw_circle 250 250 5;
+  Graphics.moveto 250 500;
+  Graphics.lineto 250 0;
+  Graphics.moveto 0 250;
+  Graphics.lineto 500 250;
 ;;
 
 let mouse_click () : (int * int) option =
@@ -106,47 +79,55 @@ let mouse_click () : (int * int) option =
 ;;
 
 let update_params (mouse_coord : int * int) (params : Params.t) : Params.t =
+  let zoom_factor = 0.5 in
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
-  let width = int_of_float @@ (x2 -. x1) /. params.step in
-  let height = int_of_float @@ (y2 -. y1) /. params.step in
+  let width, height = (500, 500) in
   let m_x, m_y = mouse_coord in
   let p_x = float_of_int m_x /. float_of_int width in
   let p_y = float_of_int m_y /. float_of_int height in
   let _ = print_string @@ Printf.sprintf "%f,%f " p_x p_y in
   let x_domain =
-    let x1, x2 = params.x_domain in
     let canvas_width = x2 -. x1 in
     let offset_x = x1 +. (canvas_width *. p_x) in
-    Mandelbrot.zoom_tuple 0.5 params.x_domain offset_x
+    Mandelbrot.zoom_tuple zoom_factor params.x_domain offset_x
   in
   let y_domain =
-    let y1, y2 = params.y_domain in
     let canvas_height = y2 -. y1 in
     let offset_y = y1 +. (canvas_height *. p_y) in
-    Mandelbrot.zoom_tuple 0.5 params.y_domain offset_y
+    Mandelbrot.zoom_tuple zoom_factor params.y_domain offset_y
   in
-  let step = params.step /. 2.0 in
+  let step = params.step *. zoom_factor in
   Params.init
     ~x_domain
     ~y_domain
     ~step
-    ~limit: (int_of_float @@ float_of_int params.limit *. 1.2)
+    ~limit: (int_of_float @@ float_of_int params.limit *. 1.0)
 ;;
 
 let initial_params =
-  Params.init ~x_domain: (-2.0, 1.0) ~y_domain: (-1.5, 1.0) ~step: 0.005 ~limit:25
+  Params.init ~x_domain: (-2.0, 1.0) ~y_domain: (-1.0, 1.0) ~step: 0.0025 ~limit:10
+;;
+
+let string_of_pair (pair : (int * int)) : string =
+  let x, y = pair in
+  Printf.sprintf "(%d,%d)" x y
 ;;
 
 let main (initial_params : Params.t) =
   let params = ref initial_params in
+  let mouse_pos = ref (0, 0) in
   while true do
-    draw !params;
+    draw (500, 500) !params !mouse_pos;
     print_string @@ Params.print !params;
     print_newline ();
     params := match (mouse_click ()) with
-      | Some mouse_coords -> update_params mouse_coords !params
       | None -> !params
+      | Some mp -> begin
+          mouse_pos := mp;
+          print_string @@ string_of_pair mp;
+          update_params !mouse_pos !params;
+        end
   done
 ;;
 
@@ -157,7 +138,7 @@ let () =
     -xb float
     -ya float
     -yb float
-    -density float
+    -s float
    "
   in
   let x1, x2 = initial_params.x_domain in
@@ -172,7 +153,7 @@ let () =
     ;("-xb", Arg.Set_float x2, "Upper bound of the Real domain")
     ;("-ya", Arg.Set_float y1, "Lower bound of the Imaginary domain")
     ;("-yb", Arg.Set_float y2, "Upper bound of the Imaginary domain")
-    ;("-d", Arg.Set_float density, "Domain in the Imaginary axis")
+    ;("-s", Arg.Set_float density, "Scale factor  ")
     ]
   in
   Arg.parse speclist (fun _ -> ()) usage_msg;
@@ -180,6 +161,6 @@ let () =
     ~x_domain: (!x1, !x2)
     ~y_domain: (!y1, !y2)
     ~step: !density
-    ~limit: 50
+    ~limit: 5000
   |> main
 ;;
