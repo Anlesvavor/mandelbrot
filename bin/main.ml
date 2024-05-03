@@ -2,38 +2,41 @@ module Params = struct
   type t =
     { x_domain: (float * float)
     ; y_domain: (float * float)
-    ; step: float
+    ; resolution: (int * int)
     ; limit: int
     }
 
-  let init ~x_domain ~y_domain ~step ~limit : t =
-    { x_domain; y_domain; step; limit }
+  let init ~x_domain ~y_domain ~resolution ~limit : t =
+    { x_domain; y_domain; resolution; limit }
 
   let print (t : t) : string =
     let x1, x2 = t.x_domain in
     let y1, y2 = t.y_domain in
-    Printf.sprintf "{x_d:%f,%f;y_d:%f,%f;s:%f;l:%d} " x1 x2 y1 y2 t.step t.limit
+    let w, h = t.resolution in
+    Printf.sprintf "{x_d:%f,%f;y_d:%f,%f;res:(%d, %d);l:%d} " x1 x2 y1 y2 w h t.limit
 end
 ;;
 
 let mandelbrot_canvas (params : Params.t) : ((float * float) * bool) list =
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
-  let step = params.step in
+  let w, h = params.resolution in
+  let y_step = (y2 -. y1) /. (float_of_int h) in
+  let x_step = (x2 -. x1) /. (float_of_int w) in
   List.map (fun x ->
-      List.map (fun y -> x, y) (Mandelbrot.range y1 y2 step)
-    ) (Mandelbrot.range x1 x2 step)
+      List.map (fun y -> x, y) (Mandelbrot.range y1 y2 y_step)
+    ) (Mandelbrot.range x1 x2 x_step)
   |> List.flatten
   |> List.map (fun (re, im) -> ((re, im), Mandelbrot.is_in_mandelbrot params.limit {re; im}))
 ;;
 
-let draw (resolution : (int * int))
+let draw
     (params : Params.t)
     (mouse_pos : (int * int))
   : unit =
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
-  let width, height = resolution in
+  let width, height = params.resolution in
   let canvas = mandelbrot_canvas params in
   let points =
     canvas
@@ -49,7 +52,7 @@ let draw (resolution : (int * int))
       )
     |> Array.of_list
   in
-  let info_bar = Printf.sprintf "Re: [%f, %f]; Im: [%fi, %fi]"
+  let info_bar = Printf.sprintf "Re: [%.20f, %.20f]; Im: [%.20fi, %.20fi]"
       x1 x2 y1 y2
   in
   let resolution = Printf.sprintf " %dx%d" width height in
@@ -58,17 +61,17 @@ let draw (resolution : (int * int))
   Graphics.set_color @@ Graphics.rgb 0 0 0;
   Graphics.plots points;
   Graphics.set_color @@ Graphics.rgb 0 0 255;
-  Graphics.fill_rect 0 0 500 15;
+  Graphics.fill_rect 0 0 width 15;
   Graphics.set_color @@ Graphics.rgb 255 128 128;
   Graphics.draw_string @@ info_bar;
   let mx, my = mouse_pos in
   Graphics.set_color @@ Graphics.rgb 0 255 0;
   Graphics.fill_circle mx my 2;
-  Graphics.draw_circle 250 250 5;
-  Graphics.moveto 250 500;
-  Graphics.lineto 250 0;
-  Graphics.moveto 0 250;
-  Graphics.lineto 500 250;
+  Graphics.draw_circle (width/2) (height/2) 5;
+  Graphics.moveto (width/2) height;
+  Graphics.lineto (width/2) 0;
+  Graphics.moveto 0 (height/2);
+  Graphics.lineto width (height/2);
 ;;
 
 let mouse_click () : (int * int) option =
@@ -82,7 +85,7 @@ let update_params (mouse_coord : int * int) (params : Params.t) : Params.t =
   let zoom_factor = 0.5 in
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
-  let width, height = (500, 500) in
+  let width, height = params.resolution in
   let m_x, m_y = mouse_coord in
   let p_x = float_of_int m_x /. float_of_int width in
   let p_y = float_of_int m_y /. float_of_int height in
@@ -97,16 +100,20 @@ let update_params (mouse_coord : int * int) (params : Params.t) : Params.t =
     let offset_y = y1 +. (canvas_height *. p_y) in
     Mandelbrot.zoom_tuple zoom_factor params.y_domain offset_y
   in
-  let step = params.step *. zoom_factor in
+  (* let step = params.step *. zoom_factor in *)
   Params.init
     ~x_domain
     ~y_domain
-    ~step
+    ~resolution: params.resolution
     ~limit: (int_of_float @@ float_of_int params.limit *. 1.0)
 ;;
 
 let initial_params =
-  Params.init ~x_domain: (-2.0, 1.0) ~y_domain: (-1.0, 1.0) ~step: 0.0025 ~limit:10
+  Params.init
+    ~x_domain: (-2.0, 1.0)
+    ~y_domain: (-1.0, 1.0)
+    ~resolution: (800, 800)
+    ~limit: 10
 ;;
 
 let string_of_pair (pair : (int * int)) : string =
@@ -116,14 +123,18 @@ let string_of_pair (pair : (int * int)) : string =
 
 let main (initial_params : Params.t) =
   let params = ref initial_params in
+  let _w, h = !params.resolution in
   let mouse_pos = ref (0, 0) in
   while true do
-    draw (500, 500) !params !mouse_pos;
+    draw !params !mouse_pos;
     print_string @@ Params.print !params;
     print_newline ();
     params := match (mouse_click ()) with
       | None -> !params
       | Some mp -> begin
+          Graphics.moveto 0 h;
+          Graphics.set_color @@ Graphics.rgb 0 0 0;
+          Graphics.draw_string "Processing...";
           mouse_pos := mp;
           print_string @@ string_of_pair mp;
           update_params !mouse_pos !params;
@@ -134,33 +145,41 @@ let main (initial_params : Params.t) =
 let () =
   let usage_msg = "
     mandelbrotset
+    -w int
+    -h int
     -xa float
     -xb float
     -ya float
     -yb float
-    -s float
+    -l int
    "
   in
+  let w, h = initial_params.resolution in
+  let w = ref w in
+  let h = ref h in
   let x1, x2 = initial_params.x_domain in
   let y1, y2 = initial_params.y_domain in
   let x1 = ref x1 in
   let x2 = ref x2 in
   let y1 = ref y1 in
   let y2 = ref y2 in
-  let density = ref initial_params.step in
+  let l = initial_params.limit in
+  let l = ref l in
   let speclist =
-    [("-xa", Arg.Set_float x1, "Lower bound of the Real domain")
+    [("-w", Arg.Set_int w, "Window width")
+    ;("-h", Arg.Set_int h, "Window height")
+    ;("-xa", Arg.Set_float x1, "Lower bound of the Real domain")
     ;("-xb", Arg.Set_float x2, "Upper bound of the Real domain")
     ;("-ya", Arg.Set_float y1, "Lower bound of the Imaginary domain")
     ;("-yb", Arg.Set_float y2, "Upper bound of the Imaginary domain")
-    ;("-s", Arg.Set_float density, "Scale factor  ")
+    ;("-l", Arg.Set_int l, "Iterations before the computed function gets {|tired|}")
     ]
   in
   Arg.parse speclist (fun _ -> ()) usage_msg;
   Params.init
     ~x_domain: (!x1, !x2)
     ~y_domain: (!y1, !y2)
-    ~step: !density
-    ~limit: 5000
+    ~resolution: (!w, !h)
+    ~limit: !l
   |> main
 ;;
