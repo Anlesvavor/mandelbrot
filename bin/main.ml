@@ -12,8 +12,9 @@ module Params = struct
   let print (t : t) : string =
     let x1, x2 = t.x_domain in
     let y1, y2 = t.y_domain in
-    let w, h = t.resolution in
-    Printf.sprintf "{x_d:%f,%f;y_d:%f,%f;res:(%d, %d);l:%d} " x1 x2 y1 y2 w h t.limit
+    (* let w, h = t.resolution in *)
+    (* Printf.sprintf "{x_d:%f,%f;y_d:%f,%f;res:(%d, %d);l:%d} " x1 x2 y1 y2 w h t.limit *)
+    Printf.sprintf "-xa %.20f -xb %.20f -ya %.20f -yb %.20f -l %d" x1 x2 y1 y2 t.limit
 end
 ;;
 
@@ -74,15 +75,39 @@ let draw
   Graphics.lineto width (height/2);
 ;;
 
-let mouse_click () : (int * int) option =
-  let e = Graphics.wait_next_event [Button_down] in
-  if e.button
-  then Some (e.mouse_x, e.mouse_y)
-  else None
-;;
+(* let mouse_click () : (int * int) option = *)
+(*   let e = Graphics.wait_next_event [Button_down] in *)
+(*   if e.button *)
+(*   then Some (e.mouse_x, e.mouse_y) *)
+(*   else None *)
+(* ;; *)
 
-let update_params (mouse_coord : int * int) (params : Params.t) : Params.t =
-  let zoom_factor = 0.5 in
+(* let key_press () : char option = *)
+(*   let e = Graphics.wait_next_event [Key_pressed] in *)
+(*   if e.keypressed *)
+(*   then Some (e.key) *)
+(*   else None *)
+(* ;; *)
+
+module Event = struct
+  type t = Click of (int * int) | Key of char | None
+
+  let read_input () : t =
+    let e = Graphics.wait_next_event [Button_down; Key_pressed] in
+    if e.button
+    then Click (e.mouse_x, e.mouse_y)
+    else if e.keypressed
+    then Key e.key
+    else None
+
+end
+
+let update_params
+    (mouse_coord : int * int)
+    (limit_increase : int)
+    (zoom_factor: float)
+    (params : Params.t)
+  : Params.t =
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
   let width, height = params.resolution in
@@ -100,45 +125,49 @@ let update_params (mouse_coord : int * int) (params : Params.t) : Params.t =
     let offset_y = y1 +. (canvas_height *. p_y) in
     Mandelbrot.zoom_tuple zoom_factor params.y_domain offset_y
   in
-  (* let step = params.step *. zoom_factor in *)
   Params.init
     ~x_domain
     ~y_domain
     ~resolution: params.resolution
-    ~limit: (int_of_float @@ float_of_int params.limit *. 1.0)
+    ~limit: (params.limit + limit_increase)
 ;;
 
 let initial_params =
   Params.init
-    ~x_domain: (-2.0, 1.0)
-    ~y_domain: (-1.0, 1.0)
-    ~resolution: (800, 800)
-    ~limit: 10
+    ~x_domain: (-2.0, 2.0)
+    ~y_domain: (-2.0, 2.0)
+    ~resolution: (500, 500)
+    ~limit: 100
 ;;
 
-let string_of_pair (pair : (int * int)) : string =
-  let x, y = pair in
-  Printf.sprintf "(%d,%d)" x y
-;;
+(* let string_of_pair (pair : (int * int)) : string = *)
+(*   let x, y = pair in *)
+(*   Printf.sprintf "(%d,%d)" x y *)
+(* ;; *)
 
 let main (initial_params : Params.t) =
   let params = ref initial_params in
-  let _w, h = !params.resolution in
-  let mouse_pos = ref (0, 0) in
+  let w, h = !params.resolution in
+  let mouse_pos = ref (w/2, h/2) in
+  let default_zoom_factor = 0.5 in
+  let zoom_factor = ref default_zoom_factor in
   while true do
     draw !params !mouse_pos;
     print_string @@ Params.print !params;
     print_newline ();
-    params := match (mouse_click ()) with
-      | None -> !params
-      | Some mp -> begin
-          Graphics.moveto 0 h;
+    let () = params := match (Event.read_input ()) with
+        | Click mp ->
+          Graphics.moveto 10 h;
           Graphics.set_color @@ Graphics.rgb 0 0 0;
           Graphics.draw_string "Processing...";
           mouse_pos := mp;
-          print_string @@ string_of_pair mp;
-          update_params !mouse_pos !params;
-        end
+          (* print_string @@ string_of_pair mp; *)
+          update_params !mouse_pos 0 !zoom_factor !params;
+        | Key '+' -> update_params !mouse_pos 10 1.0 !params;
+        | Key '-' -> update_params !mouse_pos (-10) 1.0 !params;
+        | _ -> !params;
+    in
+    ()
   done
 ;;
 
@@ -172,7 +201,7 @@ let () =
     ;("-xb", Arg.Set_float x2, "Upper bound of the Real domain")
     ;("-ya", Arg.Set_float y1, "Lower bound of the Imaginary domain")
     ;("-yb", Arg.Set_float y2, "Upper bound of the Imaginary domain")
-    ;("-l", Arg.Set_int l, "Iterations before the computed function gets {|tired|}")
+    ;("-l", Arg.Set_int l, {|Iterations before the computed function gets "tired"|})
     ]
   in
   Arg.parse speclist (fun _ -> ()) usage_msg;
