@@ -1,7 +1,7 @@
 module Params = struct
   type t =
-    { x_domain: (float * float)
-    ; y_domain: (float * float)
+    { x_domain: (Decimal.t * Decimal.t)
+    ; y_domain: (Decimal.t * Decimal.t)
     ; resolution: (int * int)
     ; limit: int
     }
@@ -14,16 +14,22 @@ module Params = struct
     let y1, y2 = t.y_domain in
     (* let w, h = t.resolution in *)
     (* Printf.sprintf "{x_d:%f,%f;y_d:%f,%f;res:(%d, %d);l:%d} " x1 x2 y1 y2 w h t.limit *)
-    Printf.sprintf "-xa %.20f -xb %.20f -ya %.20f -yb %.20f -l %d" x1 x2 y1 y2 t.limit
+    Printf.sprintf "-xa %s -xb %s-ya %s -yb %s -l %d"
+      (Decimal.to_string x1)
+      (Decimal.to_string x2)
+      (Decimal.to_string y1)
+      (Decimal.to_string y2)
+      t.limit
 end
 ;;
 
-let mandelbrot_canvas (params : Params.t) : ((float * float) * bool) list =
+let mandelbrot_canvas (params : Params.t) : ((Decimal.t * Decimal.t) * bool) list =
+  let open Decimal in
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
   let w, h = params.resolution in
-  let y_step = (y2 -. y1) /. (float_of_int h) in
-  let x_step = (x2 -. x1) /. (float_of_int w) in
+  let y_step = (y2 - y1) / (Decimal.of_int h) in
+  let x_step = (x2 - x1) / (Decimal.of_int w) in
   List.map (fun x ->
       List.map (fun y -> x, y) (Mandelbrot.range y1 y2 y_step)
     ) (Mandelbrot.range x1 x2 x_step)
@@ -40,21 +46,26 @@ let draw
   let width, height = params.resolution in
   let canvas = mandelbrot_canvas params in
   let points =
+    let open Decimal in
     canvas
     |> List.filter_map (fun ((x, y), is_in_set) ->
-        let ratio v min_v max_v = (v -. min_v) /. (max_v -. min_v) in
+        let ratio v min_v max_v = (v - min_v) / (max_v - min_v) in
         let offset_x = ratio x x1 x2  in
         let offset_y = ratio y y1 y2  in
-        let x' = int_of_float @@ (offset_x *. float_of_int width) in
-        let y' = int_of_float @@ (offset_y *. float_of_int height) in
+        let x' = Z.to_int @@ Decimal.to_bigint @@ (offset_x * Decimal.of_int width) in
+        let y' = Z.to_int @@ Decimal.to_bigint @@ (offset_y * Decimal.of_int height) in
         if is_in_set
         then Some (x', y')
         else None
       )
     |> Array.of_list
   in
-  let info_bar = Printf.sprintf "Re: [%.20f, %.20f]; Im: [%.20fi, %.20fi]"
-      x1 x2 y1 y2
+  let info_bar =
+    Printf.sprintf "Re: [%s, %s]; Im: [%si, %si]"
+      (Decimal.to_string x1)
+      (Decimal.to_string x2)
+      (Decimal.to_string y1)
+      (Decimal.to_string y2)
   in
   let resolution = Printf.sprintf " %dx%d" width height in
   Graphics.open_graph resolution;
@@ -105,24 +116,25 @@ end
 let update_params
     (mouse_coord : int * int)
     (limit_increase : int)
-    (zoom_factor: float)
+    (zoom_factor: Decimal.t)
     (params : Params.t)
   : Params.t =
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
   let width, height = params.resolution in
   let m_x, m_y = mouse_coord in
-  let p_x = float_of_int m_x /. float_of_int width in
-  let p_y = float_of_int m_y /. float_of_int height in
-  let _ = print_string @@ Printf.sprintf "%f,%f " p_x p_y in
   let x_domain =
-    let canvas_width = x2 -. x1 in
-    let offset_x = x1 +. (canvas_width *. p_x) in
+    let open Decimal in
+    let p_x = Decimal.of_int m_x / Decimal.of_int width in
+    let canvas_width = x2 - x1 in
+    let offset_x = x1 + (canvas_width * p_x) in
     Mandelbrot.zoom_tuple zoom_factor params.x_domain offset_x
   in
   let y_domain =
-    let canvas_height = y2 -. y1 in
-    let offset_y = y1 +. (canvas_height *. p_y) in
+    let open Decimal in
+    let p_y = Decimal.of_int m_y / Decimal.of_int height in
+    let canvas_height = y2 - y1 in
+    let offset_y = y1 + (canvas_height * p_y) in
     Mandelbrot.zoom_tuple zoom_factor params.y_domain offset_y
   in
   Params.init
@@ -134,8 +146,8 @@ let update_params
 
 let initial_params =
   Params.init
-    ~x_domain: (-2.0, 2.0)
-    ~y_domain: (-2.0, 2.0)
+    ~x_domain: (-2.0m, 2.0m)
+    ~y_domain: (-2.0m, 2.0m)
     ~resolution: (500, 500)
     ~limit: 100
 ;;
@@ -149,7 +161,7 @@ let main (initial_params : Params.t) =
   let params = ref initial_params in
   let w, h = !params.resolution in
   let mouse_pos = ref (w/2, h/2) in
-  let default_zoom_factor = 0.5 in
+  let default_zoom_factor = Decimal.of_float 0.5 in
   let zoom_factor = ref default_zoom_factor in
   while true do
     draw !params !mouse_pos;
@@ -163,8 +175,8 @@ let main (initial_params : Params.t) =
           mouse_pos := mp;
           (* print_string @@ string_of_pair mp; *)
           update_params !mouse_pos 0 !zoom_factor !params;
-        | Key '+' -> update_params !mouse_pos 10 1.0 !params;
-        | Key '-' -> update_params !mouse_pos (-10) 1.0 !params;
+        | Key '+' -> update_params !mouse_pos 10 (Decimal.of_int 1) !params;
+        | Key '-' -> update_params !mouse_pos (-10) (Decimal.of_int 1) !params;
         | _ -> !params;
     in
     ()
@@ -186,28 +198,31 @@ let () =
   let w, h = initial_params.resolution in
   let w = ref w in
   let h = ref h in
-  let x1, x2 = initial_params.x_domain in
-  let y1, y2 = initial_params.y_domain in
-  let x1 = ref x1 in
-  let x2 = ref x2 in
-  let y1 = ref y1 in
-  let y2 = ref y2 in
+  let x1initial, x2initial = initial_params.x_domain in
+  let y1initial, y2initial = initial_params.y_domain in
+  let x1arg = ref (Decimal.to_float x1initial) in
+  let x2arg = ref (Decimal.to_float x2initial) in
+  let y1arg = ref (Decimal.to_float y1initial) in
+  let y2arg = ref (Decimal.to_float y2initial) in
   let l = initial_params.limit in
   let l = ref l in
   let speclist =
     [("-w", Arg.Set_int w, "Window width")
     ;("-h", Arg.Set_int h, "Window height")
-    ;("-xa", Arg.Set_float x1, "Lower bound of the Real domain")
-    ;("-xb", Arg.Set_float x2, "Upper bound of the Real domain")
-    ;("-ya", Arg.Set_float y1, "Lower bound of the Imaginary domain")
-    ;("-yb", Arg.Set_float y2, "Upper bound of the Imaginary domain")
+    ;("-xa", Arg.Set_float x1arg, "Lower bound of the Real domain")
+    ;("-xb", Arg.Set_float x2arg, "Upper bound of the Real domain")
+    ;("-ya", Arg.Set_float y1arg, "Lower bound of the Imaginary domain")
+    ;("-yb", Arg.Set_float y2arg, "Upper bound of the Imaginary domain")
     ;("-l", Arg.Set_int l, {|Iterations before the computed function gets "tired"|})
     ]
   in
   Arg.parse speclist (fun _ -> ()) usage_msg;
+  let ref_float_to_decimal (a : float ref) : Decimal.t =
+    Decimal.of_string @@ string_of_float !a
+  in
   Params.init
-    ~x_domain: (!x1, !x2)
-    ~y_domain: (!y1, !y2)
+    ~x_domain: (ref_float_to_decimal x1arg, ref_float_to_decimal x2arg)
+    ~y_domain: (ref_float_to_decimal y1arg, ref_float_to_decimal y2arg)
     ~resolution: (!w, !h)
     ~limit: !l
   |> main

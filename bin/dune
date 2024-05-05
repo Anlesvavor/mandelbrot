@@ -1,4 +1,5 @@
 (executable
  (public_name mandelbrot)
  (name main)
- (libraries mandelbrot graphics))
+ (libraries mandelbrot graphics decimal)
+ (preprocess (pps ppx_decimal)))

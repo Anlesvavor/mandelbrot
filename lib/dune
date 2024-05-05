@@ -1,2 +1,4 @@
 (library
- (name mandelbrot))
+ (name mandelbrot)
+  (libraries decimal)
+  (preprocess (pps ppx_decimal)))
