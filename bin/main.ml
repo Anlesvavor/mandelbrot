@@ -12,8 +12,6 @@ module Params = struct
   let print (t : t) : string =
     let x1, x2 = t.x_domain in
     let y1, y2 = t.y_domain in
-    (* let w, h = t.resolution in *)
-    (* Printf.sprintf "{x_d:%f,%f;y_d:%f,%f;res:(%d, %d);l:%d} " x1 x2 y1 y2 w h t.limit *)
     Printf.sprintf "-xa %.20f -xb %.20f -ya %.20f -yb %.20f -l %d" x1 x2 y1 y2 t.limit
 end
 ;;
@@ -75,20 +73,6 @@ let draw
   Graphics.lineto width (height/2);
 ;;
 
-(* let mouse_click () : (int * int) option = *)
-(*   let e = Graphics.wait_next_event [Button_down] in *)
-(*   if e.button *)
-(*   then Some (e.mouse_x, e.mouse_y) *)
-(*   else None *)
-(* ;; *)
-
-(* let key_press () : char option = *)
-(*   let e = Graphics.wait_next_event [Key_pressed] in *)
-(*   if e.keypressed *)
-(*   then Some (e.key) *)
-(*   else None *)
-(* ;; *)
-
 module Event = struct
   type t = Click of (int * int) | Key of char | None
 
@@ -99,6 +83,7 @@ module Event = struct
     else if e.keypressed
     then Key e.key
     else None
+  ;;
 
 end
 
@@ -140,11 +125,6 @@ let initial_params =
     ~limit: 100
 ;;
 
-(* let string_of_pair (pair : (int * int)) : string = *)
-(*   let x, y = pair in *)
-(*   Printf.sprintf "(%d,%d)" x y *)
-(* ;; *)
-
 let main (initial_params : Params.t) =
   let params = ref initial_params in
   let w, h = !params.resolution in
@@ -161,10 +141,10 @@ let main (initial_params : Params.t) =
           Graphics.set_color @@ Graphics.rgb 0 0 0;
           Graphics.draw_string "Processing...";
           mouse_pos := mp;
-          (* print_string @@ string_of_pair mp; *)
           update_params !mouse_pos 0 !zoom_factor !params;
-        | Key '+' -> update_params !mouse_pos 10 1.0 !params;
-        | Key '-' -> update_params !mouse_pos (-10) 1.0 !params;
+        | Key '+' -> update_params !mouse_pos 50 1.0 !params;
+        | Key '-' -> update_params !mouse_pos (-50) 1.0 !params;
+        | Key '=' -> update_params !mouse_pos 50 (1.0 /. !zoom_factor) !params;
         | _ -> !params;
     in
     ()
