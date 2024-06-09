@@ -20,6 +20,21 @@ let is_in_mandelbrot (limit : int) (c : Complex.t) : bool =
   is_in_mandelbrot' limit 0 c Complex.zero
 ;;
 
+let iterations_before_scaping (limit : int) (c : Complex.t) : int =
+  let mandelbrot' = mandelbrot c in
+  let rec is_in_mandelbrot' fitness i c z =
+    if fitness = 0
+    then limit (* function "tired" of searching, c must be part of the set *)
+    else
+    if Complex.norm z > 2.0
+    then limit - fitness
+    else
+      let z' = mandelbrot' i z in
+      is_in_mandelbrot' (pred fitness) (succ i) c z'
+  in
+  is_in_mandelbrot' limit 0 c Complex.zero
+;;
+
 let range (lower_bound : float) (upper_bound : float) (step : float) =
   let module Direction = struct
     type t = Downwards | Upwards

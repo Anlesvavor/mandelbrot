@@ -1,13 +1,16 @@
 module Params = struct
+  type mode = Bw | Color
+
   type t =
     { x_domain: (float * float)
     ; y_domain: (float * float)
     ; resolution: (int * int)
     ; limit: int
+    ; mode: mode
     }
 
-  let init ~x_domain ~y_domain ~resolution ~limit : t =
-    { x_domain; y_domain; resolution; limit }
+  let init ~x_domain ~y_domain ~resolution ~limit ~mode : t =
+    { x_domain; y_domain; resolution; limit; mode }
 
   let print (t : t) : string =
     let x1, x2 = t.x_domain in
@@ -29,6 +32,37 @@ let mandelbrot_canvas (params : Params.t) : ((float * float) * bool) list =
   |> List.map (fun (re, im) -> ((re, im), Mandelbrot.is_in_mandelbrot params.limit {re; im}))
 ;;
 
+let matrix_map (f : ('a -> 'b)) (matrix : 'a array array) : 'b array array =
+  Array.map (fun row -> Array.map (fun i -> f i) row) matrix
+;;
+
+let mandelbrot_iterations_canvas (params : Params.t) : int array array =
+  let x1, x2 = params.x_domain in
+  let y1, y2 = params.y_domain in
+  let w, h = params.resolution in
+  let y_step = (y2 -. y1) /. (float_of_int h) in
+  let x_step = (x2 -. x1) /. (float_of_int w) in
+  Array.map (fun im ->
+      Array.map (fun re ->
+          Mandelbrot.iterations_before_scaping params.limit {re; im}
+        ) (Array.of_list @@ Mandelbrot.range y1 y2 y_step)
+    ) (Array.of_list @@ Mandelbrot.range x1 x2 x_step)
+;;
+
+let blue_gradient =
+  let num_shades = 32 in
+  List.(
+    init num_shades (fun x -> (x * 255) / num_shades )
+    |> rev
+  ) |> Array.of_list
+
+let color_of_iteration (limit : int) (done_iterations : int) : int =
+  let gradient_size = Array.length blue_gradient in
+  let color_index = (done_iterations * (gradient_size -1)) / limit in
+  let assigned_color = Array.get blue_gradient color_index in
+  assigned_color
+;;
+
 let draw
     (params : Params.t)
     (mouse_pos : (int * int))
@@ -36,45 +70,51 @@ let draw
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
   let width, height = params.resolution in
-  let canvas = mandelbrot_canvas params in
-  let points =
-    canvas
-    |> List.filter_map (fun ((x, y), is_in_set) ->
-        let ratio v min_v max_v = (v -. min_v) /. (max_v -. min_v) in
-        let offset_x = ratio x x1 x2  in
-        let offset_y = ratio y y1 y2  in
-        let x' = int_of_float @@ (offset_x *. float_of_int width) in
-        let y' = int_of_float @@ (offset_y *. float_of_int height) in
-        if is_in_set
-        then Some (x', y')
-        else None
-      )
-    |> Array.of_list
-  in
+  let limit = params.limit in
   let info_bar = Printf.sprintf "Re: [%.20f, %.20f]; Im: [%.20fi, %.20fi]"
       x1 x2 y1 y2
   in
   let resolution = Printf.sprintf " %dx%d" width height in
   Graphics.open_graph resolution;
+  let () = match params.mode with
+    | Bw ->
+      Graphics.set_color @@ Graphics.rgb 0 0 0;
+      let canvas = mandelbrot_canvas params in
+      let points =
+        canvas
+        |> List.filter_map (fun ((x, y), b) ->
+            if b
+            then
+              let ratio v min_v max_v = (v -. min_v) /. (max_v -. min_v) in
+              let x' =
+                let offset_x = ratio x x1 x2  in
+                int_of_float @@ (offset_x *. float_of_int width)
+              in
+              let y' =
+                let offset_y = ratio y y1 y2  in
+                int_of_float @@ (offset_y *. float_of_int height) in
+              Some (x', y')
+            else None
+          )
+        |> Array.of_list
+      in
+      Graphics.plots points
+    | Color ->
+      let colors = (mandelbrot_iterations_canvas params) |> matrix_map (color_of_iteration limit) in
+      Graphics.draw_image (Graphics.make_image colors) 0 0
+  in
   Graphics.set_window_title @@ Printf.sprintf "Mandelbrot set: %s" resolution;
-  Graphics.set_color @@ Graphics.rgb 0 0 0;
-  Graphics.plots points;
   Graphics.set_color @@ Graphics.rgb 0 0 255;
   Graphics.fill_rect 0 0 width 15;
   Graphics.set_color @@ Graphics.rgb 255 128 128;
   Graphics.draw_string @@ info_bar;
-  let mx, my = mouse_pos in
-  Graphics.set_color @@ Graphics.rgb 0 255 0;
-  Graphics.fill_circle mx my 2;
-  Graphics.draw_circle (width/2) (height/2) 5;
-  Graphics.moveto (width/2) height;
-  Graphics.lineto (width/2) 0;
-  Graphics.moveto 0 (height/2);
-  Graphics.lineto width (height/2);
+  let _mx, _my = mouse_pos in ()
 ;;
 
 module Event = struct
-  type t = Click of (int * int) | Key of char | None
+  type t = Click of (int * int)
+         | Key of char
+         | None
 
   let read_input () : t =
     let e = Graphics.wait_next_event [Button_down; Key_pressed] in
@@ -96,12 +136,20 @@ let update_params
   let x1, x2 = params.x_domain in
   let y1, y2 = params.y_domain in
   let width, height = params.resolution in
-  let m_x, m_y = mouse_coord in
+  let m_x, m_y =
+    let x, y = mouse_coord in
+    (height - y, x)
+  in
   let p_x = float_of_int m_x /. float_of_int width in
   let p_y = float_of_int m_y /. float_of_int height in
   let _ = print_string @@ Printf.sprintf "%f,%f " p_x p_y in
   let x_domain =
     let canvas_width = x2 -. x1 in
+    let () = Printf.printf "canvas_width: %f" canvas_width in
+    let () = print_newline () in
+    let offset_x = x1 +. (canvas_width *. p_x) in
+    let () = Printf.printf "offset_x: %f" offset_x in
+    let () = print_newline () in
     let offset_x = x1 +. (canvas_width *. p_x) in
     Mandelbrot.zoom_tuple zoom_factor params.x_domain offset_x
   in
@@ -115,6 +163,7 @@ let update_params
     ~y_domain
     ~resolution: params.resolution
     ~limit: (params.limit + limit_increase)
+    ~mode: params.mode
 ;;
 
 let initial_params =
@@ -123,6 +172,7 @@ let initial_params =
     ~y_domain: (-2.0, 2.0)
     ~resolution: (500, 500)
     ~limit: 100
+    ~mode: Bw
 ;;
 
 let main (initial_params : Params.t) =
@@ -161,6 +211,7 @@ let () =
     -ya float
     -yb float
     -l int
+    -c flag color
    "
   in
   let w, h = initial_params.resolution in
@@ -174,6 +225,7 @@ let () =
   let y2 = ref y2 in
   let l = initial_params.limit in
   let l = ref l in
+  let mode = ref Params.Color in
   let speclist =
     [("-w", Arg.Set_int w, "Window width")
     ;("-h", Arg.Set_int h, "Window height")
@@ -182,6 +234,7 @@ let () =
     ;("-ya", Arg.Set_float y1, "Lower bound of the Imaginary domain")
     ;("-yb", Arg.Set_float y2, "Upper bound of the Imaginary domain")
     ;("-l", Arg.Set_int l, {|Iterations before the computed function gets "tired"|})
+    ;("-l", Arg.Unit (fun () -> mode := Params.Bw), {|Uses Color|})
     ]
   in
   Arg.parse speclist (fun _ -> ()) usage_msg;
@@ -190,5 +243,6 @@ let () =
     ~y_domain: (!y1, !y2)
     ~resolution: (!w, !h)
     ~limit: !l
+    ~mode: !mode
   |> main
 ;;
