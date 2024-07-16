@@ -49,17 +49,84 @@ let mandelbrot_iterations_canvas (params : Params.t) : int array array =
     ) (Array.of_list @@ Mandelbrot.range x1 x2 x_step)
 ;;
 
+let hsl_to_rgb h s l =
+  let chroma = (1.0 -. (Float.abs ((2.0 *. l) -. 1.0)) ) *. s in
+  let h' = (float_of_int h) /. 60.0 in
+  let x = chroma *. (1.0 -. (Float.abs ((Float.rem h' 2.0) -. 1.0))) in
+  let (r, g, b) = match h' with
+    | n when 0.0 <= n && n <= 1.0 -> (chroma, x, 0.0)
+    | n when 1.0 <= n && n <= 2.0 -> (x, chroma, 0.0)
+    | n when 2.0 <= n && n <= 3.0 -> (0.0, chroma, x)
+    | n when 3.0 <= n && n <= 4.0 -> (0.0, x, chroma)
+    | n when 4.0 <= n && n <= 5.0 -> (x, 0.0, chroma)
+    | n when 5.0 <= n && n <= 6.0 -> (chroma, 0.0, x)
+    | _ -> failwith "not valid h"
+  in
+  let correction_m c =
+    ((c +. (l -. (chroma /. 2.0))) *. 255.0)
+    |> Float.round
+    |> int_of_float
+  in
+  (correction_m r, correction_m g, correction_m b)
+;;
+
+let rgb_to_int r g b = (r * (256 * 256)) + (g * (256)) + b
+
+let factal_pallete =
+  let num_shades = 360 in
+  List.(
+    init num_shades (fun x ->
+        let ratio = (float_of_int x) /. (float_of_int num_shades) in
+        let hue = (((float_of_int (120 - 60)) *. ratio) +. 60.0) |> Float.round |> int_of_float in
+        (* let luminisity = (float_of_int (num_shades * x)) /. (float_of_int num_shades) in *)
+        (* let r, g, b = hsl_to_rgb hue 0.90 luminisity in *)
+        let r, g, b = hsl_to_rgb hue 1.0 0.55 in
+        (* let r, g, b = hsl_to_rgb hue (1.0/.ratio) ratio in *)
+        (* (r * (256 * 256)) + (g * (256)) + b *)
+        rgb_to_int r g b
+      )
+    |> rev
+  ) |> Array.of_list
+;;
+
+(* let color_up = *)
+
 let blue_gradient =
-  let num_shades = 32 in
+  let num_shades = 1024 in
   List.(
     init num_shades (fun x -> (x * 255) / num_shades )
     |> rev
   ) |> Array.of_list
+;;
+
+let x_gradient =
+  let num_shades = 4096 in
+  List.(
+    init num_shades (fun x ->
+        if x <= 1
+        then rgb_to_int 0 0 0
+        else
+          Float.(
+            let t = pow ((of_int x) /. (of_int num_shades)) 10.0 in
+            let hue = to_int (120.0 +. ((120.0) *. (1.0 -. t))) in
+            let r, g, b = hsl_to_rgb hue 0.5 0.5 in
+            rgb_to_int r g b
+          )
+      )
+    |> rev
+  ) |> Array.of_list
+;;
 
 let color_of_iteration (limit : int) (done_iterations : int) : int =
-  let gradient_size = Array.length blue_gradient in
+  let x = 20 in
+  let gradient = match x with
+    | 0 -> blue_gradient
+    | 1 -> factal_pallete
+    | _ -> x_gradient
+  in
+  let gradient_size = Array.length gradient in
   let color_index = (done_iterations * (gradient_size -1)) / limit in
-  let assigned_color = Array.get blue_gradient color_index in
+  let assigned_color = Array.get gradient color_index in
   assigned_color
 ;;
 
@@ -87,11 +154,11 @@ let draw
             then
               let ratio v min_v max_v = (v -. min_v) /. (max_v -. min_v) in
               let x' =
-                let offset_x = ratio x x1 x2  in
+                let offset_x = ratio x x1 x2 in
                 int_of_float @@ (offset_x *. float_of_int width)
               in
               let y' =
-                let offset_y = ratio y y1 y2  in
+                let offset_y = ratio y y1 y2 in
                 int_of_float @@ (offset_y *. float_of_int height) in
               Some (x', y')
             else None
@@ -234,7 +301,7 @@ let () =
     ;("-ya", Arg.Set_float y1, "Lower bound of the Imaginary domain")
     ;("-yb", Arg.Set_float y2, "Upper bound of the Imaginary domain")
     ;("-l", Arg.Set_int l, {|Iterations before the computed function gets "tired"|})
-    ;("-l", Arg.Unit (fun () -> mode := Params.Bw), {|Uses Color|})
+    ;("-c", Arg.Unit (fun () -> mode := Params.Bw), {|Uses Color|})
     ]
   in
   Arg.parse speclist (fun _ -> ()) usage_msg;
