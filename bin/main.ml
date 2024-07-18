@@ -92,7 +92,7 @@ let factal_pallete =
 (* let color_up = *)
 
 let blue_gradient =
-  let num_shades = 1024 in
+  let num_shades = 4098 in
   List.(
     init num_shades (fun x -> (x * 255) / num_shades )
     |> rev
@@ -100,16 +100,19 @@ let blue_gradient =
 ;;
 
 let x_gradient =
-  let num_shades = 4096 in
+  let num_shades = 256 * 256 in
   List.(
     init num_shades (fun x ->
         if x <= 1
         then rgb_to_int 0 0 0
         else
           Float.(
-            let t = pow ((of_int x) /. (of_int num_shades)) 10.0 in
+            let t = pow ((of_int x) /. (of_int num_shades)) 3.5 in
+            (* let x' = x |>  of_int |> (fun x -> mod_float (1.5 *. x) (of_int num_shades) ) in *)
+            (* let t = pow ((x') /. (of_int num_shades)) 2.0 in *)
             let hue = to_int (120.0 +. ((120.0) *. (1.0 -. t))) in
-            let r, g, b = hsl_to_rgb hue 0.5 0.5 in
+            (* let r, g, b = hsl_to_rgb hue 0.5 0.5 in *)
+            let r, g, b = hsl_to_rgb hue 0.5 (t) in
             rgb_to_int r g b
           )
       )
